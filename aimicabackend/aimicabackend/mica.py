@@ -58,14 +58,13 @@ def evaluate(game_state, map_data):
 def count_mills(game_state, color, map_data):
     # Count the number of mills for a given color
     count = 0
-    for mill in map_data['mils']:
+    for mill in map_data['mills']:
         if all(point in [taken_point['point'] for taken_point in game_state['pointsTaken'] if taken_point['color'] == color] for point in mill):
             count += 1
     return count
 
 def is_valid_move(game_state, move, map_data):
     if is_point_taken(game_state, move):
-        print("is_valid_move: false", move)
         return False
 
     if is_placing_piece(game_state):
@@ -77,7 +76,6 @@ def is_valid_move(game_state, move, map_data):
     if is_moving_anywhere(game_state):
         return True
 
-    print("is_valid_move: false 2", move)
     return False
 
 def is_point_taken(game_state, move):
@@ -109,7 +107,6 @@ def get_possible_moves(game_state, map_data):
                 new_game_state['pointsLeftoverWhite'] -= 1
 
             if (is_valid_move(game_state, {'point': point}, map_data)):
-                print("is_valid_move: ", {'point': point})
                 # Check if a mill is formed
                 if is_part_of_mill({'point': point, 'color': game_state['playerTurn']}, new_game_state, map_data):
                     remove_opponents_piece(new_game_state, map_data)
@@ -124,13 +121,11 @@ def get_possible_moves(game_state, map_data):
                     new_game_state['pointsTaken'].append({'point': point, 'color': game_state['playerTurn']})
 
                     if (is_valid_move(game_state, {'point': point}, map_data)):
-                        print("is_valid_move: ", {'point': point})
                         # Check if a mill is formed
                         if is_part_of_mill({'point': point, 'color': game_state['playerTurn']}, new_game_state, map_data):
                             remove_opponents_piece(new_game_state, map_data)
                         possible_moves.append(new_game_state)
 
-    print("possible_moves: ", possible_moves)
     return possible_moves
 
 def remove_opponents_piece(game_state, map_data):
@@ -150,7 +145,7 @@ def remove_opponents_piece(game_state, map_data):
 
 def is_part_of_mill(taken_point, game_state, map_data):
     # Check if a piece is part of a mill
-    for mill in map_data['mils']:
+    for mill in map_data['mills']:
         if taken_point['point'] in mill and all(point in [taken_point['point'] for taken_point in game_state['pointsTaken'] if taken_point['color'] == game_state['playerTurn']] for point in mill):
             return True
     return False
@@ -162,14 +157,15 @@ def calculateMove(mapName, difficulty, game_state):
     with open(os.path.join(os.path.dirname(__file__), 'maps', mapName + '.json')) as f:
         map_data = json.load(f)
 
-    print("game_state: ", game_state)
-    print("difficulty: ", difficulty)
-    print("mapName: ", mapName)
-    print("map_data: ", map_data)
-
     #
     best_move = get_best_move(game_state, getDepthByDifficulty(difficulty), map_data)
-    print("best_move: ", best_move)
+
+    # set the player turn
+    if best_move['playerTurn'] == 'black':
+        best_move['playerTurn'] = 'white'
+    else:
+        best_move['playerTurn'] = 'black'
+
     return best_move
 
 def getDepthByDifficulty(difficulty):

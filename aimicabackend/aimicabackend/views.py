@@ -2,6 +2,7 @@ from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 import json
+import os
 from aimicabackend.mica import calculateMove
 
 @require_http_methods(["GET", "POST"])
@@ -12,7 +13,20 @@ def OK(request):
 @require_http_methods(["GET", "POST"])
 @csrf_exempt
 def maps_list(request):
-    return HttpResponse("map_list")
+    current_dir = os.path.dirname(__file__)
+    maps_dir = os.path.join(current_dir, 'maps')
+
+    maps = []
+
+    for file in os.listdir(maps_dir):
+        if file.endswith('.json'):
+            maps.append({
+                'map_name': file[:-5],
+                'map_data': json.load(open(os.path.join(maps_dir, file)))
+            })
+
+    return HttpResponse(json.dumps(maps))
+
 
 @require_http_methods(["GET", "POST"])
 @csrf_exempt
