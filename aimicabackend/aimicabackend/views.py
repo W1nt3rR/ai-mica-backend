@@ -39,14 +39,14 @@ def getMove(request):
 
     # gameState has the following format:
     # {
-    #     "pointsTaken": [
-    #           { point: "A1", color: "black"} ],
-    #           { point: "A4", color: "white"} ],
+    #     "occupiedPoints": [
+    #           { point: "A1", player: "black"} ],
+    #           { point: "A4", player: "white"} ],
     #           ...
     #     ],
-    #     "pointsLeftoverBlack": 9,
-    #     "pointsLeftoverWhite": 9,
-    #     "playerTurn": "black",
+    #     "unplacedPiecesBlack": 9,
+    #     "unplacedPiecesWhite": 9,
+    #     "player": "black",
     # }
     #
 
