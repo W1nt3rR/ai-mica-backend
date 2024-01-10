@@ -1,32 +1,61 @@
 import json
 import os
 
+memo = {}
+
 def minimax(game_state, depth, alpha, beta, maximizing_player, map_data):
+    # Convert the game state to a string
+    game_state_str = json.dumps(game_state, sort_keys=True)
+
+    # Pre-calculate the mills 
+    mills = precalculate_mills(map_data)
+
+    # Check if the game state has already been evaluated
+    if game_state_str in memo:
+        score, score_depth = memo[game_state_str]
+        if score_depth >= depth:
+            print("Memoized score", score)
+            return score
+
     if depth == 0 or game_over(game_state, map_data):
-        return evaluate(game_state, map_data)
+        print("Game over")
+        return evaluate(game_state, map_data, mills)
+    
+    possible_moves = get_possible_moves(game_state, map_data)
+
+    print("Possible moves", len(possible_moves))
+    
+    # Move ordering
+    possible_moves.sort(key=lambda move: evaluate(move, map_data, mills), reverse=maximizing_player)
 
     if maximizing_player:
         max_eval = float('-inf')
 
-        for child in get_possible_moves(game_state, map_data):
+        for child in possible_moves:
             eval = minimax(child, depth - 1, alpha, beta, False, map_data)
             max_eval = max(max_eval, eval)
-            alpha = max(alpha, eval)
 
+            alpha = max(alpha, eval)
             if beta <= alpha:
                 break
+
+        # Store the result and the depth in the memoization dictionary
+        memo[game_state_str] = (max_eval, depth)
 
         return max_eval
     else:
         min_eval = float('inf')
 
-        for child in get_possible_moves(game_state, map_data):
+        for child in possible_moves:
             eval = minimax(child, depth - 1, alpha, beta, True, map_data)
             min_eval = min(min_eval, eval)
-            beta = min(beta, eval)
 
+            beta = min(beta, eval)
             if beta <= alpha:
                 break
+
+        # Store the result and the depth in the memoization dictionary
+        memo[game_state_str] = (min_eval, depth)
 
         return min_eval
 
@@ -44,47 +73,33 @@ def get_best_move(game_state, depth, map_data):
     return best_move
 
 def game_over(game_state, map_data):
-    no_points_left = game_state['unplacedPiecesBlack'] == 0 or game_state['unplacedPiecesWhite'] == 0
+    # if 2 pieces left for any player -> game over
     no_legal_moves = len(get_possible_moves(game_state, map_data)) == 0
-    return no_points_left or no_legal_moves
+    return no_legal_moves
 
-def evaluate(game_state, map_data):
-    points_difference = game_state['unplacedPiecesBlack'] - game_state['unplacedPiecesWhite']
-    mills_difference = count_mills(game_state, 'black', map_data) - count_mills(game_state, 'white', map_data)
-    
-    # Calculate the number of possible moves for each player
-    possible_moves_black = len(get_possible_moves({'player': 'black', 'unplacedPiecesBlack': game_state['unplacedPiecesBlack'], 'unplacedPiecesWhite': game_state['unplacedPiecesWhite'], 'occupiedPoints': game_state['occupiedPoints']}, map_data))
-    possible_moves_white = len(get_possible_moves({'player': 'white', 'unplacedPiecesBlack': game_state['unplacedPiecesBlack'], 'unplacedPiecesWhite': game_state['unplacedPiecesWhite'], 'occupiedPoints': game_state['occupiedPoints']}, map_data))
-    possible_moves_difference = possible_moves_black - possible_moves_white
-
-    # Calculate the number of pieces on the board for each player
-    pieces_black = len([point for point in game_state['occupiedPoints'] if point['player'] == 'black'])
-    pieces_white = len([point for point in game_state['occupiedPoints'] if point['player'] == 'white'])
-    pieces_difference = pieces_black - pieces_white
-
-    # Calculate the strategic value of the move
-    strategic_value = 0
-    if is_placing_piece(game_state):
-        strategic_value = calculate_strategic_value(game_state, map_data)
-
-    # You might want to adjust the weights depending on what you consider to be more important
-    return points_difference + 2 * mills_difference + 0.5 * possible_moves_difference + pieces_difference # + strategic_value
-
-def calculate_strategic_value(game_state, map_data):
+def evaluate(game_state, map_data, mills):
     strategic_value = 0
     opponent = 'white' if game_state['player'] == 'black' else 'black'
+    occupied_points = {point['point']: point['player'] for point in game_state['occupiedPoints']}
 
     for point in map_data['points']:
-        potential_game_state = game_state.copy()
-        potential_game_state['occupiedPoints'].append({'point': point, 'player': game_state['player']})
+        if point in occupied_points and occupied_points[point] != game_state['player']:
+            continue  # Skip points that are already occupied by the opponent
 
-        if is_part_of_mill({'point': point, 'player': game_state['player']}, potential_game_state, map_data):
-            strategic_value += 100  # High value for forming a mill
-        elif is_part_of_mill({'point': point, 'player': opponent}, potential_game_state, map_data):
-            strategic_value += 50  # Medium value for blocking a mill
+        potential_game_state = occupied_points.copy()
+        potential_game_state[point] = game_state['player']
+
+        for mill in mills[point]:
+            if all(potential_game_state.get(p, None) == game_state['player'] for p in mill):
+                strategic_value += 200  # High value for forming a mill
+            elif all(potential_game_state.get(p, None) == opponent for p in mill):
+                strategic_value += 50  # Medium value for blocking a mill
+            elif sum(potential_game_state.get(p, None) == game_state['player'] for p in mill) == 2:
+                strategic_value += 30  # Medium value for partially completed mill
         else:
             strategic_value += 1  # Low value for all other points
 
+    print("Strategic value", strategic_value)
     return strategic_value
 
 def count_mills(game_state, color, map_data):
@@ -142,7 +157,12 @@ def get_possible_moves(game_state, map_data):
     if game_state['player'] == 'black' and game_state['unplacedPiecesBlack'] > 0 or game_state['player'] == 'white' and game_state['unplacedPiecesWhite'] > 0:
         possible_moves.extend(get_possible_placement_moves(game_state, map_data))
     else:
-        possible_moves.extend(get_possible_movement_moves(game_state, map_data))
+        black_pieces = len([point for point in game_state['occupiedPoints'] if point['player'] == 'black'])
+        white_pieces = len([point for point in game_state['occupiedPoints'] if point['player'] == 'white'])
+        if game_state['player'] == 'black' and black_pieces == 3 or game_state['player'] == 'white' and white_pieces == 3:
+            possible_moves.extend(get_possible_jumping_moves(game_state, map_data))
+        else:
+            possible_moves.extend(get_possible_movement_moves(game_state, map_data))
 
     return possible_moves
 
@@ -170,6 +190,23 @@ def get_possible_movement_moves(game_state, map_data):
         connections = next((point[1:] for point in map_data['connections'] if point[0] == occupied_point['point']), [])
         for point in connections:
             if point and not any(occupied_point['point'] == point for occupied_point in game_state['occupiedPoints']):
+                new_game_state = generate_new_game_state_for_movement(game_state, occupied_point, point)
+                if is_valid_move(game_state, {'point': point, 'from': occupied_point['point']}, map_data):
+                    if is_part_of_mill({'point': point, 'player': game_state['player']}, new_game_state, map_data):
+                        remove_opponents_piece(new_game_state, map_data)
+                    switch_player(new_game_state)
+                    possible_moves.append(new_game_state)
+
+    return possible_moves
+
+def get_possible_jumping_moves(game_state, map_data):
+    # Generate all possible moves for jumping a point to any empty spot
+    possible_moves = []
+    points_taken = set(point['point'] for point in game_state['occupiedPoints'])
+
+    for occupied_point in [occupied_point for occupied_point in game_state['occupiedPoints'] if occupied_point['player'] == game_state['player']]:
+        for point in map_data['points']:
+            if point not in points_taken:
                 new_game_state = generate_new_game_state_for_movement(game_state, occupied_point, point)
                 if is_valid_move(game_state, {'point': point, 'from': occupied_point['point']}, map_data):
                     if is_part_of_mill({'point': point, 'player': game_state['player']}, new_game_state, map_data):
@@ -224,6 +261,14 @@ def is_part_of_mill(occupied_point, game_state, map_data):
             return True
     return False
 
+def precalculate_mills(map_data):
+    mills = {point: [] for point in map_data['points']}
+    for mill in map_data['mills']:
+        if len(mill) == 3:  # A mill is formed by 3 points
+            for point in mill:
+                mills[point].append(set(mill))
+    return mills
+
 def calculateMove(mapName, difficulty, game_state):
     # Get the best move
 
@@ -238,7 +283,7 @@ def calculateMove(mapName, difficulty, game_state):
 
 def getDepthByDifficulty(difficulty):
     if difficulty == "easy":
-        return 2
+        return 3
     elif difficulty == "medium":
         return 5
     elif difficulty == "hard":
