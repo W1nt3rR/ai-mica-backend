@@ -15,10 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path
-from aimicabackend.views import OK, maps_list, getMove
+from aimicabackend.views import OK, maps_list, get_move
 
 urlpatterns = [
     path('', OK),
     path('maps/', maps_list, name='maps'),
-    path('calculatemove/', getMove, name='calculatemove')
+    path('calculatemove/', get_move, name='calculatemove')
 ]

@@ -30,16 +30,17 @@ def maps_list(request):
 
 @require_http_methods(["GET", "POST"])
 @csrf_exempt
-def getMove(request):
+def get_move(request):
     body = request.body
 
-    mapName = json.loads(body)['mapName']
+    map_name = json.loads(body)['mapName']
     depth = json.loads(body)['depth']
-    gameState = json.loads(body)['gameState']
+    difficulty = json.loads(body)['difficulty']
+    current_game_state = json.loads(body)['gameState']
 
-    newGameState = get_best_move(gameState, depth, mapName)
+    new_game_state = get_best_move(current_game_state, depth, map_name)
     
-    return HttpResponse(json.dumps(newGameState))
+    return HttpResponse(json.dumps(new_game_state))
 
 # Game map example:
 #  0-----------1-----------2
