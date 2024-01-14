@@ -34,11 +34,12 @@ def get_move(request):
     body = request.body
 
     map_name = json.loads(body)['mapName']
+    timeout = json.loads(body)['timeout']
     depth = json.loads(body)['depth']
     difficulty = json.loads(body)['difficulty']
     current_game_state = json.loads(body)['gameState']
 
-    new_game_state = get_best_move(current_game_state, depth, map_name)
+    new_game_state = get_best_move(current_game_state, depth, map_name, difficulty, timeout)
     
     return HttpResponse(json.dumps(new_game_state))
 

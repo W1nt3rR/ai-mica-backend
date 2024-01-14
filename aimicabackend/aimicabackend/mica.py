@@ -1,11 +1,14 @@
 import json
 import os
+import time
 from typing import List
-from aimicabackend.types import TGameState, TMapData, TPoint, TMills, TPlayer
+from aimicabackend.types import TGameState, TMapData, TPoint, TMills, TPlayer, TDifficulty
 
 memo = {}
 
-def get_best_move(game_state: TGameState, depth: int, map_name: str):
+def get_best_move(game_state: TGameState, depth: int, map_name: str, difficulty: TDifficulty, timeout: int) -> TGameState:
+    start_time = time.time()
+
     max_eval = float('-inf')
     best_move = None
     map_data = load_map_file(map_name)
@@ -15,6 +18,11 @@ def get_best_move(game_state: TGameState, depth: int, map_name: str):
 
     for child_state, child_move_from, child_move_to in get_possible_moves(game_state, map_data, mills):
         eval = minimax(child_state, child_move_from, child_move_to, depth, float('-inf'), float('inf'), False, map_data, mills)
+
+        if time.time() - start_time > float(timeout):
+            print("Timeout expired!")
+            return best_move
+        
         print("\nEVAL", eval)
 
         if eval > max_eval:
@@ -35,7 +43,7 @@ def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth:
     # Check if the game state has already been evaluated
     if memo_key in memo:
         score, score_depth = memo[memo_key]
-        if score_depth >= depth:
+        if score_depth == depth:
             print("MEMOIZED score", score)
             return score
 
