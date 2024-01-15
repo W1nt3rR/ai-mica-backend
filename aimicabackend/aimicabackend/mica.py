@@ -1,39 +1,35 @@
 import json
 import os
 import time
+from multiprocessing import Pool, Manager
 from typing import List
 from aimicabackend.types import TGameState, TMapData, TPoint, TMills, TPlayer, TDifficulty
 
 memo = {}
 
+def worker(args):
+    child_state, child_move_from, child_move_to, depth, map_data, mills, start_time, timeout = args
+    eval = minimax(child_state, child_move_from, child_move_to, depth, float('-inf'), float('inf'), False, map_data, mills, start_time, timeout)
+    
+    print("\nEVAL", eval)
+    return child_state, eval
+
 def get_best_move(game_state: TGameState, depth: int, map_name: str, difficulty: TDifficulty, timeout: int) -> TGameState:
     start_time = time.time()
-
-    max_eval = float('-inf')
-    best_move = None
     map_data = load_map_file(map_name)
     mills = precalculate_mills(map_data)
 
     print("\nMILLS", mills)
 
-    for child_state, child_move_from, child_move_to in get_possible_moves(game_state, map_data, mills):
-        eval = minimax(child_state, child_move_from, child_move_to, depth, float('-inf'), float('inf'), False, map_data, mills)
+    with Pool() as pool:
+        results = pool.map(worker, [(child_state, child_move_from, child_move_to, depth, map_data, mills, start_time, timeout) for child_state, child_move_from, child_move_to in get_possible_moves(game_state, map_data, mills)])
 
-        if time.time() - start_time > float(timeout):
-            print("Timeout expired!")
-            return best_move
-        
-        print("\nEVAL", eval)
-
-        if eval > max_eval:
-            max_eval = eval
-            best_move = child_state
-            print("\nPOTENTIAL BEST MOVE", eval)
+    best_move, max_eval = max(results, key=lambda x: x[1], default=(None, float('-inf')))
 
     print ("\nBEST MOVE", max_eval, best_move)
     return best_move
 
-def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, alpha: float, beta: float, maximizing_player: bool, map_data: TMapData, mills: TMills) -> float:
+def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, alpha: float, beta: float, maximizing_player: bool, map_data: TMapData, mills: TMills, start_time: float, timeout: float) -> float:
     # Convert the game state to a string
     game_state_str = json.dumps(game_state, sort_keys=True)
     point_from_str = json.dumps(point_from, sort_keys=True)
@@ -59,12 +55,15 @@ def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth:
         max_eval = float('-inf')
 
         for child_state, child_move_from, child_move_to in possible_moves:
-            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, alpha, beta, False, map_data, mills)
+            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, alpha, beta, False, map_data, mills, start_time, timeout)
             max_eval = max(max_eval, eval)
+
+            if time.time() - start_time > timeout:
+                print("TIMEOUT", depth)
+                break
 
             alpha = max(alpha, eval)
             if beta <= alpha:
-                # print("PRUNED", eval, alpha, beta)
                 break
 
         # Store the result and the depth in the memoization dictionary
@@ -76,12 +75,15 @@ def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth:
         min_eval = float('inf')
 
         for child_state, child_move_from, child_move_to in possible_moves:
-            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, alpha, beta, True, map_data, mills)
+            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, alpha, beta, True, map_data, mills, start_time, timeout)
             min_eval = min(min_eval, eval)
+
+            if time.time() - start_time > timeout:
+                print("TIMEOUT", depth)
+                break
 
             beta = min(beta, eval)
             if beta <= alpha:
-                # print("PRUNED", eval, alpha, beta)
                 break
 
         # Store the result and the depth in the memoization dictionary
