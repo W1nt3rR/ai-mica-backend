@@ -125,26 +125,26 @@ def evaluate(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth
         if is_part_of_mill({'point': point_to['point'], 'player': opponent}, game_state, mills):
             strategic_value += 30 * (1 + depth / 10)
 
-        strategic_value += calculate_winning_configuration(game_state) * 1000 * (1 + depth / 10)
+        strategic_value += calculate_winning_configuration(game_state, map_data) * 1000 * (1 + depth / 10)
 
     return strategic_value
 
-def calculate_winning_configuration(game_state: TGameState) -> int:
+def calculate_winning_configuration(game_state: TGameState, map_data: TMapData) -> int:
     player = game_state['player']
     opponent = get_opponent(game_state)
 
     if count_pieces(game_state, opponent) == 2:
         return 1  # The opponent has been reduced to two pieces, so it's a winning configuration for the player
-    elif not has_legal_move(game_state, opponent):
+    elif not has_legal_move(game_state, opponent, map_data):
         return 1  # The opponent has no legal moves, so it's a winning configuration for the player
     elif count_pieces(game_state, player) == 2:
         return -1  # The player has been reduced to two pieces, so it's a losing configuration
-    elif not has_legal_move(game_state, player):
+    elif not has_legal_move(game_state, player, map_data):
         return -1  # The player has no legal moves, so it's a losing configuration
     else:
         return 0  # Neither side has won or lost yet
     
-def has_legal_move(game_state: TGameState, player: TPlayer, map_data: TMapData, mills: TMills) -> bool:
+def has_legal_move(game_state: TGameState, player: TPlayer, map_data: TMapData) -> bool:
     if can_player_place(game_state):
         # Check if there are any empty points for placing a piece
         return any(not is_point_taken(game_state, {'point': point, 'player': player}) for point in map_data['points'])
