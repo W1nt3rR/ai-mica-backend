@@ -8,10 +8,8 @@ from aimicabackend.types import TGameState, TMapData, TPoint, TMills, TPlayer, T
 memo = {}
 
 def worker(args):
-    child_state, child_move_from, child_move_to, depth, map_data, mills, start_time, timeout = args
-    eval = minimax(child_state, child_move_from, child_move_to, depth, float('-inf'), float('inf'), False, map_data, mills, start_time, timeout)
-    
-    print("\nEVAL", eval)
+    child_state, child_move_from, child_move_to, depth, difficulty, map_data, mills, start_time, timeout = args
+    eval = minimax(child_state, child_move_from, child_move_to, depth, difficulty, float('-inf'), float('inf'), False, map_data, mills, start_time, timeout)
     return child_state, eval
 
 def get_best_move(game_state: TGameState, depth: int, map_name: str, difficulty: TDifficulty, timeout: int) -> TGameState:
@@ -19,17 +17,14 @@ def get_best_move(game_state: TGameState, depth: int, map_name: str, difficulty:
     map_data = load_map_file(map_name)
     mills = precalculate_mills(map_data)
 
-    print("\nMILLS", mills)
-
     with Pool() as pool:
-        results = pool.map(worker, [(child_state, child_move_from, child_move_to, depth, map_data, mills, start_time, timeout) for child_state, child_move_from, child_move_to in get_possible_moves(game_state, map_data, mills)])
+        results = pool.map(worker, [(child_state, child_move_from, child_move_to, depth, difficulty, map_data, mills, start_time, timeout) for child_state, child_move_from, child_move_to in get_possible_moves(game_state, map_data, mills)])
 
     best_move, max_eval = max(results, key=lambda x: x[1], default=(None, float('-inf')))
 
-    print ("\nBEST MOVE", max_eval, best_move)
     return best_move
 
-def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, alpha: float, beta: float, maximizing_player: bool, map_data: TMapData, mills: TMills, start_time: float, timeout: float) -> float:
+def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, difficulty: TDifficulty, alpha: float, beta: float, maximizing_player: bool, map_data: TMapData, mills: TMills, start_time: float, timeout: float) -> float:
     # Convert the game state to a string
     game_state_str = json.dumps(game_state, sort_keys=True)
     point_from_str = json.dumps(point_from, sort_keys=True)
@@ -38,28 +33,26 @@ def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth:
 
     # Check if the game state has already been evaluated
     if memo_key in memo:
-        score, score_depth = memo[memo_key]
-        if score_depth == depth:
-            print("MEMOIZED score", score)
+        score, score_depth, difficulty = memo[memo_key]
+        if score_depth == depth and difficulty == difficulty:
             return score
 
     if depth == 0 or game_over(game_state, map_data, mills):
-        return evaluate(game_state, point_from, point_to, depth, map_data, mills)
+        return evaluate(game_state, point_from, point_to, depth, difficulty, map_data, mills)
     
     possible_moves = get_possible_moves(game_state, map_data, mills)
     
     # Move ordering
-    possible_moves.sort(key=lambda move : evaluate(move[0], move[1], move[2], depth, map_data, mills), reverse=maximizing_player)
+    possible_moves.sort(key=lambda move : evaluate(move[0], move[1], move[2], depth, difficulty, map_data, mills), reverse=maximizing_player)
 
     if maximizing_player:
         max_eval = float('-inf')
 
         for child_state, child_move_from, child_move_to in possible_moves:
-            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, alpha, beta, False, map_data, mills, start_time, timeout)
+            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, difficulty, alpha, beta, False, map_data, mills, start_time, timeout)
             max_eval = max(max_eval, eval)
 
             if time.time() - start_time > timeout:
-                print("TIMEOUT", depth)
                 break
 
             alpha = max(alpha, eval)
@@ -67,19 +60,17 @@ def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth:
                 break
 
         # Store the result and the depth in the memoization dictionary
-        memo[memo_key] = (max_eval, depth)
+        memo[memo_key] = (max_eval, depth, difficulty)
 
-        # print("MAX EVAL", max_eval)
         return max_eval
     else:
         min_eval = float('inf')
 
         for child_state, child_move_from, child_move_to in possible_moves:
-            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, alpha, beta, True, map_data, mills, start_time, timeout)
+            eval = minimax(child_state, child_move_from, child_move_to, depth - 1, difficulty, alpha, beta, True, map_data, mills, start_time, timeout)
             min_eval = min(min_eval, eval)
 
             if time.time() - start_time > timeout:
-                print("TIMEOUT", depth)
                 break
 
             beta = min(beta, eval)
@@ -87,9 +78,8 @@ def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth:
                 break
 
         # Store the result and the depth in the memoization dictionary
-        memo[memo_key] = (min_eval, depth)
+        memo[memo_key] = (min_eval, depth, difficulty)
 
-        # print("MIN EVAL", min_eval)
         return min_eval
 
 def game_over(game_state: TGameState, map_data: TMapData, mills: TMills) -> bool:
@@ -104,33 +94,111 @@ def count_pieces(game_state: TGameState, player: TPlayer) -> int:
     unplaced_pieces = game_state['unplacedPieces'][game_state['player']]
     return pieces_on_board + unplaced_pieces
 
-def evaluate(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, map_data: TMapData, mills: TMills) -> float:
+def evaluate(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, difficulty: TDifficulty, map_data: TMapData, mills: TMills) -> float:
     strategic_value = float(0)
     opponent = get_opponent(game_state)
     occupied_points = {point['point']: point['player'] for point in game_state['occupiedPoints']}
 
     # Consider the points point_from and point_to
     if is_part_of_mill(point_to, game_state, mills):
-        strategic_value += 100 * (depth + 1) # (1 + (depth) / 10) # Very high value for forming a mill
-
-    # Check if a move broke opponent's mill
-    if is_part_of_mill({'point': point_to['point'], 'player': opponent}, game_state, mills):
-        # print("BLOCKED OPPONENT'S MILL", point_to)
-        strategic_value += 30
-
-    # Check if a move broke player's own mill
-    if point_from != None and is_part_of_mill(point_from, game_state, mills):
-        if can_form_mill(point_to, game_state, map_data, mills):
-            print("can form mill again")
-            strategic_value += 20  # Add value for forming a mill after breaking own mill
-        else:
-            strategic_value -= 10  # Subtract value for breaking own mill without chance of forming a mill
+        strategic_value += 331 * (1 + depth / 10) # Very high value for forming a mill
 
     # Consider the number of pieces each player has
-    strategic_value += count_pieces(game_state, game_state['player']) * 49
-    strategic_value -= count_pieces(game_state, opponent) * 49
+    strategic_value += count_pieces(game_state, game_state['player']) * 20 * (1 + depth / 10)
+    strategic_value -= count_pieces(game_state, opponent) * 20 * (1 + depth / 10)
+        
+    if (difficulty == 'hard'):
+        strategic_value += calculate_piece_coordination(game_state, map_data) * 10 * (1 + depth / 10)
 
-    return strategic_value # * (1 + (depth) / 10)
+        # Penalize risky moves that expose a piece
+        strategic_value -= penalize_risky_moves(game_state, map_data, mills) * 12 * (1 + depth / 10)
+
+        # Check if a move broke player's own mill
+        if point_from != None and is_part_of_mill(point_from, game_state, mills):
+            if can_form_mill(point_to, game_state, map_data, mills):
+                strategic_value += 20 * (1 + depth / 10) # Add value for forming a mill after breaking own mill
+            else:
+                strategic_value -= 10 * (1 + depth / 10) # Subtract value for breaking own mill without chance of forming a mill
+
+    if (difficulty == 'medium' or difficulty == 'hard'):
+        # Check if a move broke opponent's mill
+        if is_part_of_mill({'point': point_to['point'], 'player': opponent}, game_state, mills):
+            strategic_value += 30 * (1 + depth / 10)
+
+        strategic_value += calculate_winning_configuration(game_state) * 1000 * (1 + depth / 10)
+
+    return strategic_value
+
+def calculate_winning_configuration(game_state: TGameState) -> int:
+    player = game_state['player']
+    opponent = get_opponent(game_state)
+
+    if count_pieces(game_state, opponent) == 2:
+        return 1  # The opponent has been reduced to two pieces, so it's a winning configuration for the player
+    elif not has_legal_move(game_state, opponent):
+        return 1  # The opponent has no legal moves, so it's a winning configuration for the player
+    elif count_pieces(game_state, player) == 2:
+        return -1  # The player has been reduced to two pieces, so it's a losing configuration
+    elif not has_legal_move(game_state, player):
+        return -1  # The player has no legal moves, so it's a losing configuration
+    else:
+        return 0  # Neither side has won or lost yet
+    
+def has_legal_move(game_state: TGameState, player: TPlayer, map_data: TMapData, mills: TMills) -> bool:
+    if can_player_place(game_state):
+        # Check if there are any empty points for placing a piece
+        return any(not is_point_taken(game_state, {'point': point, 'player': player}) for point in map_data['points'])
+    elif can_player_jump(game_state):
+        # Check if there are any legal jumps for the player
+        return any(
+            is_valid_move(game_state, {'point': point_to, 'from': point_from}, map_data)
+            for point_from in game_state['occupiedPoints']
+            if point_from['player'] == player
+            for point_to in map_data['points']
+            if not is_point_taken(game_state, {'point': point_to, 'player': player})
+        )
+    else:
+        # Check if there are any legal movements for the player
+        return any(
+            is_valid_move(game_state, {'point': point_to, 'from': point_from}, map_data)
+            for point_from in game_state['occupiedPoints']
+            if point_from['player'] == player
+            for point_to in map_data['points']
+            if not is_point_taken(game_state, {'point': point_to, 'player': player})
+        )
+
+# In the context of this function, "coordination" refers to the number of direct connections a piece has to other pieces owned by the same player.
+# The function iterates over all points occupied by pieces on the board.
+# For each point occupied by the current player, it finds all directly connected points (i.e., points that can be reached in one move).
+# It then counts how many of these points are also occupied by the current player's pieces.
+def calculate_piece_coordination(game_state: TGameState, map_data: TMapData) -> float:
+    coordination_value = 0
+
+    for occupied_point in game_state['occupiedPoints']:
+        if occupied_point['player'] == game_state['player']:
+            connections = next((point[1:] for point in map_data['connections'] if point[0] == occupied_point['point']), [])
+            friendly_adjacent_pieces = sum(1 for point in connections if occupied_point.get(point, None) == game_state['player'])
+            coordination_value += friendly_adjacent_pieces
+
+    return coordination_value
+
+# The function iterates over all points occupied by pieces on the board.
+# For each point occupied by the current player, it finds all directly connected points (i.e., points that can be reached in one move).
+# It then checks if any of these points are not occupied and are part of a mill.
+# If such a point is found, it is considered a risky move and the penalty score is incremented.
+def penalize_risky_moves(game_state: TGameState, map_data: TMapData, mills: TMills) -> float:
+    risky_move_penalty = 0
+
+    for occupied_point in game_state['occupiedPoints']:
+        if occupied_point['player'] == game_state['player']:
+            connections = next((point[1:] for point in map_data['connections'] if point[0] == occupied_point['point']), [])
+            for point in connections:
+                if not any(occupied_point['point'] == point for occupied_point in game_state['occupiedPoints']):
+                    if is_part_of_mill({'point': point, 'player': game_state['player']}, game_state, mills):
+                        # Penalize moves that expose a piece forming part of a mill
+                        risky_move_penalty += 1
+
+    return risky_move_penalty
 
 def can_form_mill(point: TPoint, game_state: TGameState, map_data: TMapData, mills: TMills) -> bool:
     player = game_state['player']
@@ -164,7 +232,6 @@ def is_valid_move(game_state: TGameState, move: TPoint, map_data: TMapData) -> b
         return True
 
     if is_moving_piece(game_state, move, map_data):
-        # print("IS MOVING PIECE", move)
         return True
 
     if can_player_jump(game_state):
