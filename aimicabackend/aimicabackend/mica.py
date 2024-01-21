@@ -22,7 +22,10 @@ def get_best_move(game_state: TGameState, depth: int, map_name: str, difficulty:
 
     best_move, max_eval = max(results, key=lambda x: x[1], default=(None, float('-inf')))
 
-    return best_move
+    return {
+        'gameState': best_move,
+        'eval': max_eval
+    }
 
 def minimax(game_state: TGameState, point_from: TPoint, point_to: TPoint, depth: int, difficulty: TDifficulty, alpha: float, beta: float, maximizing_player: bool, map_data: TMapData, mills: TMills, start_time: float, timeout: float) -> float:
     # Convert the game state to a string
